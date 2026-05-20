@@ -1,15 +1,30 @@
-FROM node:alpine
+# Stage 1: Build the application
+FROM node:18-alpine as builder
 
-RUN mkdir -p /usr/src/node-app && chown -R node:node /usr/src/node-app
+WORKDIR /app
 
-WORKDIR /usr/src/node-app
+COPY package*.json ./
 
-COPY package.json yarn.lock ./
+RUN npm install
+
+COPY . .
+
+RUN npm run build
+
+# Xóa devDependencies để giảm dung lượng
+RUN npm prune --production
+
+# Stage 2: Run the application
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
 
 USER node
 
-RUN yarn install --pure-lockfile
-
-COPY --chown=node:node . .
-
 EXPOSE 3000
+
+CMD ["npm", "dist/index.js"]
