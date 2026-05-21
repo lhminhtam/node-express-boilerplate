@@ -1,0 +1,81 @@
+name: CI Boilerplate Node Express
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      # Chạy Unit Test (không cần DB)
+      - name: Run tests
+        run: npm test
+
+  build-and-integrate-test:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and Run with Docker Compose
+        run: docker-compose up -d
+
+      - name: Wait for MongoDB Healthcheck
+        run: |
+          echo "Waiting for DB to be healthy..."
+          # Script này của bạn viết rất tốt, chỉ cần khớp tên container
+          # Ở đây tôi dùng label để tìm container cho chắc chắn
+          TIMEOUT=60
+          until [ "$(docker inspect --format='{{.State.Health.Status}}' $(docker ps -qf "name=mongodb"))" = "healthy" ]; do
+            echo "Still waiting for DB..."
+            sleep 3
+            # (Bạn có thể giữ logic TIMEOUT của bạn, nó rất an toàn)
+          done
+
+      - name: Check if App is responding
+        run: |
+          # Dự án này thường dùng route /v1/docs hoặc /v1/auth/login
+          # Nếu gọi / mà nó trả về 404 thì curl sẽ báo lỗi nếu có flag -f
+          curl -i http://localhost:3000/v1/docs
+
+      - name: Tear down Docker Compose
+        run: docker-compose down
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: build-and-integrate-test
+    if: github.ref == 'refs/heads/main' # Chỉ push khi merge vào main
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/node-app:latest
