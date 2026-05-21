@@ -41,19 +41,14 @@ jobs:
       - name: Wait for MongoDB Healthcheck
         run: |
           echo "Waiting for DB to be healthy..."
-          # Script này của bạn viết rất tốt, chỉ cần khớp tên container
-          # Ở đây tôi dùng label để tìm container cho chắc chắn
           TIMEOUT=60
           until [ "$(docker inspect --format='{{.State.Health.Status}}' $(docker ps -qf "name=mongodb"))" = "healthy" ]; do
             echo "Still waiting for DB..."
             sleep 3
-            # (Bạn có thể giữ logic TIMEOUT của bạn, nó rất an toàn)
           done
 
       - name: Check if App is responding
         run: |
-          # Dự án này thường dùng route /v1/docs hoặc /v1/auth/login
-          # Nếu gọi / mà nó trả về 404 thì curl sẽ báo lỗi nếu có flag -f
           curl -i http://localhost:3000/v1/docs
 
       - name: Tear down Docker Compose
